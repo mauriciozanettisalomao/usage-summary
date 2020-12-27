@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'summary-usage
+
+  Solution for monitoring request baseline
+
+  '
+Resources:
+  UsageSummary:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: ..\..\statemachine\usageSummary.asl.json
+      DefinitionSubstitutions:
+        RetrieveEventsFunctionArn:
+          Fn::GetAtt:
+          - RetrieveEventsFunction
+          - Arn
+        UsageReportFunctionArn:
+          Fn::GetAtt:
+          - UsageReportFunction
+          - Arn
+        DDBPutItem:
+          Fn::Sub: arn:${AWS::Partition}:states:::dynamodb:putItem
+        DDBTable:
+          Ref: TransactionTable
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Description: Schedule to run the summary usage state machine every day
+              at 01:00 AM
+            Enabled: true
+            Schedule: cron(0 1 * * ? *)
+      Policies:
+      - LambdaInvokePolicy:
+          FunctionName:
+            Ref: RetrieveEventsFunction
+      - LambdaInvokePolicy:
+          FunctionName:
+            Ref: UsageReportFunction
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: TransactionTable
+  RetrieveEventsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: RetrieveEventsFunction
+      Handler: main
+      Runtime: go1.x
+  UsageReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: UsageReportFunction
+      Handler: main
+      Runtime: go1.x
+  TransactionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: usage_summary
+      AttributeDefinitions:
+      - AttributeName: date
+        AttributeType: S
+      - AttributeName: platform
+        AttributeType: S
+      KeySchema:
+      - AttributeName: date
+        KeyType: HASH
+      - AttributeName: platform
+        KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+Outputs:
+  UsageSummaryArn:
+    Description: Summary Usage State machine ARN
+    Value:
+      Ref: UsageSummary
+  UsageSummaryRoleArn:
+    Description: IAM Role created for Summary Usage State machine based on the specified
+      SAM Policy Templates
+    Value:
+      Fn::GetAtt:
+      - UsageSummaryRole
+      - Arn

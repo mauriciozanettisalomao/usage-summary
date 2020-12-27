@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  summary-usage
+
+  Solution for monitoring request baseline
+
+Resources:
+  UsageSummary:
+    Type: AWS::Serverless::StateMachine # More info about State Machine Resource: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-statemachine.html
+    Properties:
+      DefinitionUri: statemachine/usageSummary.asl.json
+      DefinitionSubstitutions:
+        RetrieveEventsFunctionArn: !GetAtt  RetrieveEventsFunction.Arn
+        UsageReportFunctionArn: !GetAtt UsageReportFunction.Arn
+        DDBPutItem: !Sub arn:${AWS::Partition}:states:::dynamodb:putItem
+        DDBTable: !Ref TransactionTable
+      Events:
+        DailySchedule:
+          Type: Schedule # More info about Schedule Event Source: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-property-statemachine-schedule.html
+          Properties:
+            Description: Schedule to run the summary usage state machine every day at 01:00 AM
+            Enabled: True
+            Schedule: "cron(0 1 * * ? *)"
+      Policies: # Find out more about SAM policy templates: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RetrieveEventsFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref UsageReportFunction
+        - DynamoDBWritePolicy:
+            TableName: !Ref TransactionTable
+
+  RetrieveEventsFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-function.html
+    Properties:
+      CodeUri: functions/retrieve-events/
+      Handler: main
+      Runtime: go1.x
+
+  UsageReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/usage-report/
+      Handler: main
+      Runtime: go1.x
+
+  TransactionTable:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      TableName: usage_summary
+      AttributeDefinitions: 
+        - AttributeName: date
+          AttributeType: S
+        - AttributeName: platform
+          AttributeType: S
+      KeySchema: 
+        - AttributeName: date
+          KeyType: HASH
+        - AttributeName: platform
+          KeyType: RANGE           
+      BillingMode: PAY_PER_REQUEST 
+
+      
+
+Outputs:
+  # StockTradingStateMachineHourlyTradingSchedule is an implicit Schedule event rule created out of Events key under Serverless::StateMachine
+  # Find out more about other implicit resources you can reference within SAM
+  # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-specification-generated-resources.html
+  UsageSummaryArn:
+    Description: "Summary Usage State machine ARN"
+    Value: !Ref UsageSummary
+  UsageSummaryRoleArn:
+    Description: "IAM Role created for Summary Usage State machine based on the specified SAM Policy Templates"
+    Value: !GetAtt UsageSummaryRole.Arn

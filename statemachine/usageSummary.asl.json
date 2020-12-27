@@ -1,0 +1,101 @@
+{
+    "Comment": "A state machine that gets de summary of DXC API ClaroBR usage.",
+    "StartAt": "Getting requests from a day",
+    "States": {
+        "Getting requests from a day": {
+            "Type": "Task",
+            "Resource": "${RetrieveEventsFunctionArn}",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.TaskFailed"
+                    ],
+                    "IntervalSeconds": 300,
+                    "MaxAttempts": 5,
+                    "BackoffRate": 1.5
+                }
+            ],
+            "Next": "Record Transaction"
+        },
+        "Record Transaction": {
+            "Type": "Task",
+            "Resource": "${DDBPutItem}",
+            "Parameters": {
+                "TableName": "${DDBTable}",
+                "Item": {
+                    "date": {
+                        "S.$": "$.usageSummary.date"
+                    },
+                    "platform": {
+                        "S.$": "$.usageSummary.platform"
+                    },
+                    "requests": {
+                        "N.$": "$.usageSummary.requests"
+                    },
+                    "others": {
+                        "N.$": "$.usageSummary.others"
+                    },                    
+                    "availabilty": {
+                        "N.$": "$.usageSummary.availability"
+                    }
+                }
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.TaskFailed"
+                    ],
+                    "IntervalSeconds": 20,
+                    "MaxAttempts": 5,
+                    "BackoffRate": 10
+                }
+            ],
+            "ResultPath": null,
+            "Next": "Is the first weekday or first day of the month?"
+        },
+        "Is the first weekday or first day of the month?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Or": [
+                        {
+                            "Variable": "$.dayOfWeek",
+                            "StringEquals": "Monday"
+                        },
+                        {
+                            "Variable": "$.dayOfMonth",
+                            "NumericEquals": 1
+                        }
+                    ],
+                "Next": "Generate usage report"                
+                }
+            ],
+            "Default": "Finish"
+        },
+        "Generate usage report": {
+            "Type": "Task",
+            "Resource": "${UsageReportFunctionArn}",
+            "Next": "Send message to SNS"
+        },
+        "Send message to SNS": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::sns:publish",
+            "Parameters": {
+                "TopicArn": "arn:aws:sns:REGION:ACCOUNT_ID:myTopic",
+                "Message": {
+                    "Input": "Hello from Step Functions!"
+                }
+            },
+            "Next": "Finish"
+        },
+        "Finish": {
+            "Type": "Pass",
+            "Result": {
+                "data1": 0.5,
+                "data2": 1.5
+            },
+            "ResultPath": "$.result",
+            "End": true
+        }
+    }
+}
