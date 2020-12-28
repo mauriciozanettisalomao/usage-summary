@@ -3,67 +3,119 @@
     "StartAt": "Getting requests from a day",
     "States": {
         "Getting requests from a day": {
-            "Type": "Task",
-            "Resource": "${RetrieveEventsFunctionArn}",
-            "Retry": [
+            "Type": "Parallel",
+            "Branches": [
                 {
-                    "ErrorEquals": [
-                        "States.TaskFailed"
-                    ],
-                    "IntervalSeconds": 300,
-                    "MaxAttempts": 5,
-                    "BackoffRate": 1.5
+                    "StartAt": "Getting requests from a day (test)",
+                    "States": {
+                        "Getting requests from a day (test)": {
+                            "Type": "Task",
+                            "Resource": "${RetrieveEventsFunctionArn}",
+                            "Parameters": {
+                                "platform": "${PlatformTestParameter}",
+                                "source": "${SourceTestParameter}"
+                            },
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.TaskFailed"
+                                    ],
+                                    "IntervalSeconds": 300,
+                                    "MaxAttempts": 5,
+                                    "BackoffRate": 1.5
+                                }
+                            ],
+                            "End": true
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Getting requests from a day (stage)",
+                    "States": {
+                        "Getting requests from a day (stage)": {
+                            "Type": "Task",
+                            "Resource": "${RetrieveEventsFunctionArn}",
+                            "Parameters": {
+                                "platform": "${PlatformStageParameter}",
+                                "source": "${SourceStageParameter}"
+                            },
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.TaskFailed"
+                                    ],
+                                    "IntervalSeconds": 300,
+                                    "MaxAttempts": 5,
+                                    "BackoffRate": 1.5
+                                }
+                            ],
+                            "End": true
+                        }
+                    }
                 }
             ],
-            "Next": "Record Transaction"
+            "Next": "Map Results"
         },
-        "Record Transaction": {
-            "Type": "Task",
-            "Resource": "${DDBPutItem}",
-            "Parameters": {
-                "TableName": "${DDBTable}",
-                "Item": {
-                    "date": {
-                        "S.$": "$.usageSummary.date"
-                    },
-                    "platform": {
-                        "S.$": "$.usageSummary.platform"
-                    },
-                    "requests": {
-                        "N.$": "$.usageSummary.requests"
-                    },
-                    "others": {
-                        "N.$": "$.usageSummary.others"
-                    },                    
-                    "availabilty": {
-                        "N.$": "$.usageSummary.availability"
+        "Map Results": {
+            "Type": "Map",
+            "MaxConcurrency": 0,
+            "Iterator": {
+                "StartAt": "Record Transaction",
+                "States": {
+                    "Record Transaction": {
+                        "Type": "Task",
+                        "Resource": "${DDBPutItem}",
+                        "Parameters": {
+                            "TableName": "${DDBTable}",
+                            "Item": {
+                                "date": {
+                                    "S.$": "$.usageSummary.date"
+                                },
+                                "platform": {
+                                    "S.$": "$.usageSummary.platform"
+                                },
+                                "requests": {
+                                    "N.$": "$.usageSummary.requests"
+                                },
+                                "others": {
+                                    "N.$": "$.usageSummary.others"
+                                },                    
+                                "availabilty": {
+                                    "N.$": "$.usageSummary.availability"
+                                },
+                                "endpoints": {
+                                    "M.$": "$.usageSummary.endpoints"
+                                }
+                            }
+                        },
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "States.TaskFailed"
+                                ],
+                                "IntervalSeconds": 20,
+                                "MaxAttempts": 5,
+                                "BackoffRate": 10
+                            }
+                        ],
+                        "End": true
                     }
                 }
             },
-            "Retry": [
-                {
-                    "ErrorEquals": [
-                        "States.TaskFailed"
-                    ],
-                    "IntervalSeconds": 20,
-                    "MaxAttempts": 5,
-                    "BackoffRate": 10
-                }
-            ],
             "ResultPath": null,
             "Next": "Is the first weekday or first day of the month?"
-        },
+        },        
         "Is the first weekday or first day of the month?": {
             "Type": "Choice",
             "Choices": [
                 {
                     "Or": [
                         {
-                            "Variable": "$.dayOfWeek",
+                            "Variable": "$[0].dayOfWeek",
                             "StringEquals": "Monday"
                         },
                         {
-                            "Variable": "$.dayOfMonth",
+                            "Variable": "$[0].dayOfMonth",
                             "NumericEquals": 1
                         }
                     ],
@@ -81,19 +133,15 @@
             "Type": "Task",
             "Resource": "arn:aws:states:::sns:publish",
             "Parameters": {
-                "TopicArn": "arn:aws:sns:REGION:ACCOUNT_ID:myTopic",
+                "TopicArn": "${UsageSummaryTopic}",
                 "Message": {
-                    "Input": "Hello from Step Functions!"
+                    "Input": "$.result"
                 }
             },
             "Next": "Finish"
         },
         "Finish": {
             "Type": "Pass",
-            "Result": {
-                "data1": 0.5,
-                "data2": 1.5
-            },
             "ResultPath": "$.result",
             "End": true
         }

@@ -5,6 +5,19 @@ Description: 'summary-usage
   Solution for monitoring request baseline
 
   '
+Parameters:
+  PlatformTestParameter:
+    Type: String
+    Default: test
+  SourceTestParameter:
+    Type: String
+    Default: /dev/test
+  PlatformStageParameter:
+    Type: String
+    Default: stage
+  SourceStageParameter:
+    Type: String
+    Default: /dev/stage
 Resources:
   UsageSummary:
     Type: AWS::Serverless::StateMachine
@@ -23,6 +36,16 @@ Resources:
           Fn::Sub: arn:${AWS::Partition}:states:::dynamodb:putItem
         DDBTable:
           Ref: TransactionTable
+        UsageSummaryTopic:
+          Ref: UsageSummaryTopic
+        PlatformTestParameter:
+          Ref: PlatformTestParameter
+        SourceTestParameter:
+          Ref: SourceTestParameter
+        PlatformStageParameter:
+          Ref: PlatformStageParameter
+        SourceStageParameter:
+          Ref: SourceStageParameter
       Events:
         DailySchedule:
           Type: Schedule
@@ -41,15 +64,20 @@ Resources:
       - DynamoDBWritePolicy:
           TableName:
             Ref: TransactionTable
+      - SNSPublishMessagePolicy:
+          TopicName:
+            Ref: UsageSummaryTopic
   RetrieveEventsFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: RetrieveEvents
       CodeUri: RetrieveEventsFunction
       Handler: main
       Runtime: go1.x
   UsageReportFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: UsageReport
       CodeUri: UsageReportFunction
       Handler: main
       Runtime: go1.x
@@ -68,6 +96,10 @@ Resources:
       - AttributeName: platform
         KeyType: RANGE
       BillingMode: PAY_PER_REQUEST
+  UsageSummaryTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: UsageSummaryTopic
 Outputs:
   UsageSummaryArn:
     Description: Summary Usage State machine ARN

@@ -5,16 +5,36 @@ Description: >
 
   Solution for monitoring request baseline
 
+Parameters:
+  PlatformTestParameter:
+    Type: String
+    Default: test
+  SourceTestParameter:
+    Type: String
+    Default: /dev/test
+  PlatformStageParameter:
+    Type: String
+    Default: stage
+  SourceStageParameter:
+    Type: String
+    Default: /dev/stage  
+  
 Resources:
   UsageSummary:
     Type: AWS::Serverless::StateMachine # More info about State Machine Resource: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-statemachine.html
     Properties:
+      ## Type: EXPRESS 
       DefinitionUri: statemachine/usageSummary.asl.json
       DefinitionSubstitutions:
         RetrieveEventsFunctionArn: !GetAtt  RetrieveEventsFunction.Arn
         UsageReportFunctionArn: !GetAtt UsageReportFunction.Arn
         DDBPutItem: !Sub arn:${AWS::Partition}:states:::dynamodb:putItem
         DDBTable: !Ref TransactionTable
+        UsageSummaryTopic: !Ref UsageSummaryTopic
+        PlatformTestParameter: !Ref  PlatformTestParameter
+        SourceTestParameter: !Ref SourceTestParameter
+        PlatformStageParameter: !Ref PlatformStageParameter
+        SourceStageParameter: !Ref SourceStageParameter
       Events:
         DailySchedule:
           Type: Schedule # More info about Schedule Event Source: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-property-statemachine-schedule.html
@@ -29,10 +49,13 @@ Resources:
             FunctionName: !Ref UsageReportFunction
         - DynamoDBWritePolicy:
             TableName: !Ref TransactionTable
+        - SNSPublishMessagePolicy:
+            TopicName: !Ref UsageSummaryTopic
 
   RetrieveEventsFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-function.html
     Properties:
+      FunctionName: RetrieveEvents
       CodeUri: functions/retrieve-events/
       Handler: main
       Runtime: go1.x
@@ -40,6 +63,7 @@ Resources:
   UsageReportFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: UsageReport
       CodeUri: functions/usage-report/
       Handler: main
       Runtime: go1.x
@@ -60,12 +84,13 @@ Resources:
           KeyType: RANGE           
       BillingMode: PAY_PER_REQUEST 
 
+  UsageSummaryTopic:
+    Type: AWS::SNS::Topic
+    Properties: 
+      TopicName: UsageSummaryTopic
       
 
 Outputs:
-  # StockTradingStateMachineHourlyTradingSchedule is an implicit Schedule event rule created out of Events key under Serverless::StateMachine
-  # Find out more about other implicit resources you can reference within SAM
-  # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-specification-generated-resources.html
   UsageSummaryArn:
     Description: "Summary Usage State machine ARN"
     Value: !Ref UsageSummary
